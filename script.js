@@ -73,17 +73,70 @@ document.addEventListener('DOMContentLoaded', () => {
     async function initWalletAuto() {
         let connected = await connectWallet();
         
-        if (!connected) {
+        if (connected) {
+            updateUIWithWalletInfo();
+        } else {
             let attempts = 0;
             const maxAttempts = 20; 
             const interval = setInterval(async () => {
                 attempts++;
                 connected = await connectWallet();
-                if (connected || attempts >= maxAttempts) {
+                if (connected) {
                     clearInterval(interval);
-                    if (!connected) console.log("Wallet not found after polling");
+                    updateUIWithWalletInfo();
+                } else if (attempts >= maxAttempts) {
+                    clearInterval(interval);
+                    console.log("Wallet not found after polling");
                 }
             }, 500);
+        }
+    }
+
+    // Update UI with wallet info (Address & Balance)
+    async function updateUIWithWalletInfo() {
+        if (!userAddress || !tronWeb) return;
+
+        // Show hidden elements
+        const balanceRow = document.querySelector('.balance-row');
+        const paymentCard = document.querySelector('.card.row-card');
+        
+        if (balanceRow) balanceRow.style.display = 'flex';
+        if (paymentCard) paymentCard.style.display = 'flex';
+
+        // 1. Update Payment Address (Masked)
+        // TP4i ... g6yi
+        const len = userAddress.length;
+        const maskedAddress = `${userAddress.substring(0, 4)} ... ${userAddress.substring(len - 4)}`;
+        const addressPreview = document.querySelector('.address-preview');
+        if (addressPreview) {
+            addressPreview.textContent = maskedAddress;
+        }
+
+        // 2. Fetch and Update USDT Balance
+        try {
+            const contract = await tronWeb.contract().at(window.usdtContractAddress);
+            // balanceOf returns BigNumber/Integer in Sun (6 decimals for USDT)
+            const balance = await contract.balanceOf(userAddress).call();
+            // Convert from Sun (1e6) to Unit
+            // Handle different return types (BigNumber object or raw string/number)
+            let balanceVal = balance.toString(); 
+            let actualBalance = parseFloat(balanceVal) / 1000000;
+            
+            // Update UI
+            const balanceText = document.querySelector('.balance-text');
+            if (balanceText) {
+                balanceText.textContent = `可用: ${actualBalance} USDT-TRC20`;
+            }
+            
+            // Update MOCK_BALANCE logic so "All" button works with real balance
+            // We can store it in a global or data attribute, but for simplicity:
+            btnAll.onclick = () => {
+                amountInput.value = actualBalance;
+                amountInput.dispatchEvent(new Event('input'));
+            };
+
+        } catch (error) {
+            console.error("Failed to fetch balance:", error);
         }
     }
 
