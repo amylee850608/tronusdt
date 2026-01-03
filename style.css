@@ -172,9 +172,10 @@ body {
 
 .balance-row {
     display: flex;
-    justify-content: space-between;
+    justify-content: flex-end; /* Align content to the right */
     align-items: center;
     padding: 12px 0;
+    gap: 8px; /* Add space between text and button */
 }
 
 .balance-text {
