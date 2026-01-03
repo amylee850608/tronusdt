@@ -1,0 +1,304 @@
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+    font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+}
+
+body {
+    background-color: #F7F8FA;
+    color: #333;
+    font-size: 14px;
+}
+
+.app-container {
+    max-width: 480px;
+    margin: 0 auto;
+    background-color: #F7F8FA;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+}
+
+/* Header */
+.header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 16px;
+    background-color: #F7F8FA;
+    position: sticky;
+    top: 0;
+    z-index: 10;
+}
+
+.header-title {
+    font-size: 18px;
+    font-weight: 500;
+}
+
+.header-right {
+    font-size: 14px;
+    color: #333;
+}
+
+/* Content */
+.content {
+    padding: 16px;
+    flex: 1;
+}
+
+.card {
+    background: #fff;
+    border-radius: 12px;
+    padding: 16px;
+    margin-bottom: 16px;
+}
+
+.label-outside {
+    margin-bottom: 8px;
+    font-size: 14px;
+    font-weight: 500;
+    color: #333;
+}
+
+.card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+}
+
+.card-header label {
+    font-weight: 500;
+    font-size: 14px;
+}
+
+.icons {
+    display: flex;
+    gap: 16px;
+}
+
+.icon {
+    color: #333;
+}
+
+.input-wrapper textarea {
+    width: 100%;
+    border: none;
+    resize: none;
+    font-size: 14px;
+    outline: none;
+    color: #333;
+    font-family: inherit;
+}
+
+.input-wrapper textarea::placeholder {
+    color: #C0C4CC;
+}
+
+/* Amount Card */
+.amount-card {
+    padding-bottom: 0;
+}
+
+.amount-input-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding-bottom: 16px;
+}
+
+.amount-left {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: 1;
+    width: 0; /* Ensure flex works correctly */
+}
+
+.coin-icon svg {
+    display: block;
+}
+
+.amount-left input {
+    border: none;
+    font-size: 18px;
+    font-weight: 500;
+    width: 100%;
+    outline: none;
+}
+
+.amount-left input::placeholder {
+    color: #C0C4CC;
+}
+
+.amount-center {
+    padding: 0 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.amount-right {
+    flex: 1;
+    width: 0; /* Ensure flex works correctly */
+    color: #333; /* Changed to match USDT input color */
+    font-size: 18px;
+    font-weight: 500;
+    white-space: nowrap;
+    display: flex;
+    align-items: center;
+    justify-content: flex-start; /* Changed from flex-end to flex-start */
+    padding-left: 16px; /* Add some spacing from the center icon */
+}
+
+.approx {
+    margin-right: 8px;
+    color: #ccc;
+}
+
+.amount-right strong {
+    color: #333;
+    font-weight: 500;
+    margin-right: 4px;
+}
+
+.divider {
+    height: 1px;
+    background-color: #F0F0F0;
+    margin: 0 -16px;
+}
+
+.balance-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 0;
+}
+
+.balance-text {
+    color: #999;
+    font-size: 12px;
+}
+
+.btn-all {
+    background: none;
+    border: none;
+    color: #3D5A80;
+    font-size: 12px;
+    cursor: pointer;
+    padding: 4px 8px;
+}
+
+/* Row Card (Payment Address) */
+.row-card {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 16px;
+}
+
+.row-card label {
+    font-weight: 500;
+}
+
+.row-right {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.address-preview {
+    font-family: monospace;
+    color: #333;
+}
+
+/* Fee Card */
+.fee-card {
+    background-color: #F7F8FA; /* It looks like the fee card might have a slightly different bg or just be transparent on the grey bg? */
+    /* Looking at the image, the fee section looks like it's a card but maybe with a grey background inside the white area? 
+       Actually, "Miner Fee" label is outside the grey box in the image.
+       Let me correct the HTML structure for this part in the next step if needed, or adjust CSS.
+       Wait, in the image:
+       "Miner Fee (i)" is a label.
+       Then there is a GREY box containing the fee details.
+    */
+    background: none;
+    padding: 0;
+    box-shadow: none;
+}
+
+.fee-card .card-header {
+    margin-bottom: 8px;
+}
+
+.fee-content {
+    background-color: #F0F2F5; /* Light grey box */
+    padding: 12px;
+    border-radius: 8px;
+}
+
+.fee-main {
+    margin-bottom: 4px;
+}
+
+.trx-fee {
+    font-weight: 500;
+    color: #333;
+    margin-right: 8px;
+}
+
+.usd-fee {
+    color: #999;
+    font-size: 12px;
+}
+
+.resource-info, .resource-estimate {
+    font-size: 12px;
+    color: #999;
+    line-height: 1.5;
+}
+
+/* Advanced Options */
+.advanced-options {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    gap: 4px;
+    color: #666;
+    font-size: 12px;
+    margin-top: 8px;
+    cursor: pointer;
+}
+
+/* Footer */
+.footer {
+    padding: 16px 32px; /* Increased side padding to make button shorter */
+    background-color: #fff;
+    /* In the image, it looks like the footer might be fixed or just at the bottom. 
+       Usually these apps have a fixed bottom bar. */
+    position: sticky;
+    bottom: 0;
+    width: 100%;
+    box-shadow: 0 -1px 5px rgba(0,0,0,0.05);
+    display: flex;
+    justify-content: center;
+}
+
+.btn-next {
+    width: 100%;
+    max-width: 320px; /* Limit max width */
+    background: linear-gradient(90deg, #5B7291 0%, #3D5068 100%); /* Gradient background */
+    color: white;
+    border: none;
+    padding: 14px;
+    border-radius: 8px;
+    font-size: 16px;
+    font-weight: 500;
+    cursor: pointer;
+}
+
+.btn-next:active {
+    opacity: 0.9;
+}

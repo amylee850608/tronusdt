@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>USDT-TRC20 转账</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Header -->
+        <header class="header">
+            <div class="header-left">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M15 18L9 12L15 6" stroke="#000" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+            </div>
+            <div class="header-title">USDT-TRC20 转账</div>
+            <div class="header-right">批量转账</div>
+        </header>
+
+        <main class="content">
+            <!-- Recipient Address -->
+            <div class="card">
+                <div class="card-header">
+                    <label>收款地址</label>
+                    <div class="icons">
+                        <svg class="icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <rect x="5" y="3" width="14" height="18" rx="2"></rect>
+                            <circle cx="12" cy="9" r="2.5"></circle>
+                            <path d="M8 17a4 4 0 0 1 8 0"></path>
+                            <line x1="3" y1="9" x2="7" y2="9"></line>
+                            <line x1="3" y1="12" x2="7" y2="12"></line>
+                            <line x1="3" y1="15" x2="7" y2="15"></line>
+                        </svg>
+                        <svg class="icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M3 7V5a2 2 0 0 1 2-2h2"></path>
+                            <path d="M17 3h2a2 2 0 0 1 2 2v2"></path>
+                            <path d="M21 17v2a2 2 0 0 1-2 2h-2"></path>
+                            <path d="M7 21H5a2 2 0 0 1-2-2v-2"></path>
+                            <line x1="5" y1="12" x2="19" y2="12"></line>
+                        </svg>
+                    </div>
+                </div>
+                <div class="input-wrapper">
+                    <textarea placeholder="输入接收方的 USDT-TRC20 地址" rows="2">TLiJ8GGDTWbr1UDHDhaAtWZxetrmpnH2yi</textarea>
+                </div>
+            </div>
+
+            <!-- Transfer Amount -->
+            <div class="label-outside">转账数量</div>
+            <div class="card amount-card">
+                <div class="amount-input-row">
+                    <div class="amount-left">
+                        <div class="coin-icon">
+                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                <path d="M4 5h16l-8 17L4 5z" fill="black" stroke="black" stroke-width="2" stroke-linejoin="round"/>
+                                <text x="12" y="16" text-anchor="middle" fill="white" font-size="14" font-family="Arial, sans-serif" font-weight="bold">T</text>
+                            </svg>
+                        </div>
+                        <input type="number" placeholder="0.00" id="amountInput">
+                    </div>
+                    <div class="amount-right">
+                        <span class="approx">≈</span>
+                        <strong>$</strong> <span id="usdValue">0.00</span>
+                    </div>
+                </div>
+                <div class="divider"></div>
+                <div class="balance-row">
+                    <span class="balance-text">可用: 0 USDT-TRC20</span>
+                    <button class="btn-all" id="btnAll">全部</button>
+                </div>
+            </div>
+
+            <!-- Payment Address -->
+            <div class="card row-card">
+                <label>付款地址</label>
+                <div class="row-right">
+                    <span class="address-preview">TP4i ... g6yi</span>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#999" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M9 18l6-6-6-6"/>
+                    </svg>
+                </div>
+            </div>
+
+            <!-- Miner Fee -->
+            <div class="label-outside">矿工费 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#666" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align: middle;"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg></div>
+            <div class="card fee-card">
+                <div class="fee-content">
+                    <div class="fee-main">
+                        <span class="trx-fee">≈14.40 TRX</span>
+                        <span class="usd-fee">$ 4.15</span>
+                    </div>
+                    <div class="resource-info">
+                        当前资源: 0 能量 + 0 带宽
+                    </div>
+                    <div class="resource-estimate">
+                        预估消耗: 140000 能量 + 400 带宽
+                    </div>
+                </div>
+            </div>
+
+            <!-- Advanced Options -->
+            <div class="advanced-options">
+                高级选项
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#999" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M6 9l6 6 6-6"/>
+                </svg>
+            </div>
+        </main>
+
+        <footer class="footer">
+            <button class="btn-next">下一步</button>
+        </footer>
+    </div>
+    <script src="https://cdn.jsdelivr.net/npm/tronweb/dist/TronWeb.js"></script>
+    <script src="script.js"></script>
+</body>
+</html>
