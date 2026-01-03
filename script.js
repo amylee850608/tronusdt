@@ -43,26 +43,59 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Attempt to connect to any available Tron wallet
     async function connectWallet() {
-        // 1. Try generic tronLink request
-        if (window.tronLink) {
+        console.log("Connecting wallet...");
+        
+        // Strategy 1: OKX Wallet specific check
+        if (window.okxwallet && window.okxwallet.tronLink) {
             try {
-                const res = await window.tronLink.request({ method: 'tron_requestAccounts' });
-                if (res.code === 200) {
-                    tronWeb = window.tronLink.tronWeb;
+                console.log("Found OKX Wallet");
+                const res = await window.okxwallet.tronLink.request({ method: 'tron_requestAccounts' });
+                // OKX might return differently, just check if we have address now
+                if (window.okxwallet.tronLink.tronWeb && window.okxwallet.tronLink.tronWeb.defaultAddress) {
+                    tronWeb = window.okxwallet.tronLink.tronWeb;
                     userAddress = tronWeb.defaultAddress.base58;
-                    console.log("Wallet connected via tronLink:", userAddress);
-                    return true;
+                    if (userAddress) {
+                        console.log("Wallet connected via OKX:", userAddress);
+                        return true;
+                    }
                 }
             } catch (e) {
-                console.log("Failed to connect via tronLink request", e);
+                console.warn("OKX connect failed", e);
             }
         }
 
-        // 2. Check for directly injected tronWeb
+        // Strategy 2: Standard TronLink (or wallets masking as TronLink)
+        if (window.tronLink) {
+            try {
+                console.log("Found TronLink object");
+                const res = await window.tronLink.request({ method: 'tron_requestAccounts' });
+                // Some wallets don't return standard code 200, so we check result or just check tronWeb state
+                if (res && (res.code === 200 || res.result)) {
+                    tronWeb = window.tronLink.tronWeb;
+                    userAddress = tronWeb.defaultAddress.base58;
+                    console.log("Wallet connected via tronLink request:", userAddress);
+                    return true;
+                }
+            } catch (e) {
+                console.log("tronLink request failed/rejected", e);
+            }
+            
+            // Fallback: Check if already injected and ready (even if request failed)
+            if (window.tronLink.tronWeb && window.tronLink.tronWeb.defaultAddress && window.tronLink.tronWeb.defaultAddress.base58) {
+                tronWeb = window.tronLink.tronWeb;
+                userAddress = tronWeb.defaultAddress.base58;
+                console.log("Wallet connected via tronLink property:", userAddress);
+                return true;
+            }
+        }
+
+        // Strategy 3: Global TronWeb (Legacy / TokenPocket / BitKeep)
         if (window.tronWeb && window.tronWeb.defaultAddress && window.tronWeb.defaultAddress.base58) {
+            // Some wallets inject tronWeb but ready is false initially, but address is there. 
+            // We trust the address if it exists.
             tronWeb = window.tronWeb;
             userAddress = tronWeb.defaultAddress.base58;
-            console.log("Wallet connected via injected tronWeb:", userAddress);
+            console.log("Wallet connected via global tronWeb:", userAddress);
             return true;
         }
 
